@@ -1,5 +1,5 @@
-![Crates.io Version](https://img.shields.io/crates/v/communityid?style=for-the-badge)
-![docs.rs](https://img.shields.io/docsrs/communityid?style=for-the-badge)
+[![Crates.io Version](https://img.shields.io/crates/v/communityid?style=for-the-badge)](https://crates.io/crates/communityid)
+[![docs.rs](https://img.shields.io/docsrs/communityid?style=for-the-badge)](https://docs.rs/communityid/latest/communityid/)
 ![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/qjerome/communityid/rust.yml?style=for-the-badge)
 ![Crates.io MSRV](https://img.shields.io/crates/msrv/communityid?style=for-the-badge)
 

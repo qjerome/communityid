@@ -10,6 +10,9 @@ rust-version = "1.56.1"
 documentation = "https://docs.rs/communityid"
 repository = "https://github.com/qjerome/communityid"
 
+[package.metadata.docs.rs]
+all-features = true
+
 [dependencies]
 base64 = "0.22"
 sha1 = "0.10"

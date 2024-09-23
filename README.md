@@ -1,8 +1,12 @@
+![Crates.io Version](https://img.shields.io/crates/v/communityid?style=for-the-badge)
+![docs.rs](https://img.shields.io/docsrs/communityid?style=for-the-badge)
+![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/qjerome/communityid/rust.yml?style=for-the-badge)
+![Crates.io MSRV](https://img.shields.io/crates/msrv/communityid?style=for-the-badge)
 
 <!-- cargo-rdme start -->
 
-This crate provides a practical implementation of the Community ID 
-standard (https://github.com/corelight/community-id-spec) for network
+This crate provides a practical implementation of the [Community ID 
+standard](https://github.com/corelight/community-id-spec) for network
 flow hashing.
 
 # Features

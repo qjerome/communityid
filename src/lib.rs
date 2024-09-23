@@ -1,7 +1,7 @@
 #![deny(unused_imports)]
 
-//! This crate provides a practical implementation of the Community ID 
-//! standard (https://github.com/corelight/community-id-spec) for network
+//! This crate provides a practical implementation of the [Community ID 
+//! standard](https://github.com/corelight/community-id-spec) for network
 //! flow hashing.
 //! 
 //! # Features

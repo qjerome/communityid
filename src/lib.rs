@@ -122,11 +122,38 @@ fn icmp6_port_equivalent(p1: u16, p2: u16) -> (u16, u16, bool) {
 #[derive(Debug, Clone, Copy, Hash)]
 #[repr(u8)]
 pub enum Protocol {
-    ICMP = 1,
-    TCP = 6,
-    UDP = 17,
-    ICMP6 = 58,
-    SCTP = 132,
+    ICMP ,
+    TCP ,
+    UDP ,
+    ICMP6 ,
+    SCTP ,
+    Other(u8),
+}
+
+impl From<Protocol> for u8{
+    fn from(value: Protocol) -> u8 {
+        match value {
+            Protocol::ICMP => 1,
+            Protocol::TCP => 6,
+            Protocol::UDP => 17,
+            Protocol::ICMP6 => 58,
+            Protocol::SCTP => 132,
+            Protocol::Other(o) => o,
+        }
+    }
+}
+
+impl From<u8> for Protocol{
+    fn from(value: u8) -> Self{
+        match value {
+            v if v == u8::from(Self::ICMP) => Self::ICMP,
+            v if v == u8::from(Self::TCP) => Self::TCP,
+            v if v == u8::from(Self::UDP) => Self::UDP,
+            v if v == u8::from(Self::ICMP6) => Self::ICMP6,
+            v if v == u8::from(Self::SCTP) => Self::SCTP,
+            _=> Self::Other(value)
+        }
+    }
 }
 
 impl Protocol {
@@ -158,8 +185,8 @@ pub enum CommunityId {
 #[cfg(feature = "serde")]
 impl Serialize for CommunityId{
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-        where
-            S: Serializer {
+    where
+    S: Serializer {
         serializer.serialize_str(&self.base64())
     }
 }
@@ -168,23 +195,23 @@ impl Serialize for CommunityId{
 impl<'de> Deserialize<'de> for CommunityId {
     fn deserialize<D>(deserializer: D) -> Result<CommunityId, D::Error>
     where
-        D: Deserializer<'de>,
+    D: Deserializer<'de>,
     {
         struct CommunityIdVisitor;
-
+        
         impl<'de> Visitor<'de> for CommunityIdVisitor {
             type Value = CommunityId;
-
+            
             fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
                 formatter.write_str("expecting a community-id base64 encoded")
             }
-
+            
             fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
             where
-                E: serde::de::Error,
+            E: serde::de::Error,
             {
                 let (version, encoded) =  v.split_once(':').ok_or(E::custom("wrong community id format"))?;
-
+                
                 match version {
                     "1" => {
                         let v = BASE64_STANDARD.decode(encoded).map_err(E::custom)?;
@@ -199,7 +226,7 @@ impl<'de> Deserialize<'de> for CommunityId {
                 }
             }
         }
-
+        
         deserializer.deserialize_string(CommunityIdVisitor)
     }
 }
@@ -218,7 +245,7 @@ impl CommunityId {
             Self::V1(data) => format!("1:{}", BASE64_STANDARD.encode(data)),
         }
     }
-
+    
     /// Encodes the current community-id in its hexadecimal digest representation
     /// 
     /// Example
@@ -235,7 +262,7 @@ impl CommunityId {
     pub fn hexdigest(&self) -> String {
         match self {
             Self::V1(data) => 
-        format!("1:{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}", data[0],data[1],data[2],data[3],data[4],data[5],data[6],data[7],data[8],data[9],data[10],data[11],data[12],data[13],data[14],data[15],data[16],data[17],data[18],data[19])
+            format!("1:{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}", data[0],data[1],data[2],data[3],data[4],data[5],data[6],data[7],data[8],data[9],data[10],data[11],data[12],data[13],data[14],data[15],data[16],data[17],data[18],data[19])
         }
     }
 }
@@ -245,13 +272,50 @@ impl CommunityId {
 pub struct Flow {
     proto: Protocol,
     src_ip: IpAddr,
-    src_port: u16,
+    src_port: Option<u16>,
     dst_ip: IpAddr,
-    dst_port: u16,
+    dst_port: Option<u16>,
     one_way: bool,
 }
 
 impl Flow {
+    #[inline(always)]
+    fn make(
+        proto: Protocol,
+        src_ip: IpAddr,
+        src_port: Option<u16>,
+        dst_ip: IpAddr,
+        dst_port: Option<u16>,
+    ) -> Self {
+        if let (Some(src_port), Some(dst_port)) = (src_port,dst_port){
+            let (src_port, dst_port, one_way) = match proto {
+                Protocol::ICMP => icmp4_port_equivalent(src_port, dst_port),
+                Protocol::ICMP6 => icmp6_port_equivalent(src_port, dst_port),
+                _ => (src_port, dst_port, false),
+            };
+            
+            Self {
+                proto,
+                src_ip,
+                src_port: Some(src_port),
+                dst_ip,
+                dst_port: Some(dst_port),
+                one_way,
+            }
+        } else {
+            Self {
+                proto,
+                src_ip,
+                src_port: None,
+                dst_ip,
+                dst_port: None,
+                one_way: false,
+            }
+            
+        }
+        
+    }
+    
     /// Creates a new flow from parameters
     #[inline]
     pub fn new(
@@ -261,24 +325,21 @@ impl Flow {
         dst_ip: IpAddr,
         dst_port: u16,
     ) -> Self {
-        let (src_port, dst_port, one_way) = match proto {
-            Protocol::ICMP => icmp4_port_equivalent(src_port, dst_port),
-            Protocol::ICMP6 => icmp6_port_equivalent(src_port, dst_port),
-            _ => (src_port, dst_port, false),
-        };
-
-        Self {
-            proto,
-            src_ip,
-            src_port,
-            dst_ip,
-            dst_port,
-            one_way,
-        }
+        Self::make(proto, src_ip, Some(src_port), dst_ip, Some(dst_port))
     }
-
+    
+    /// Creates a partial flow (without port information) from source and destination [IpAddr] 
+    #[inline]
+    pub fn partial(
+        proto: Protocol,
+        src_ip: IpAddr,
+        dst_ip: IpAddr,
+    ) -> Self {
+        Self::make(proto, src_ip, None, dst_ip, None)
+    }
+    
     #[inline(always)]
-    fn order(&self) -> (IpAddr, u16, IpAddr, u16) {
+    fn order(&self) -> (IpAddr, Option<u16>, IpAddr, Option<u16>) {
         if self.one_way {
             (self.src_ip, self.src_port, self.dst_ip, self.dst_port)
         } else if (self.src_ip, self.src_port) > (self.dst_ip, self.dst_port) {
@@ -287,7 +348,7 @@ impl Flow {
             (self.src_ip, self.src_port, self.dst_ip, self.dst_port)
         }
     }
-
+    
     /// Computes the [CommunityId] corresponding to that Flow
     #[inline]
     pub fn community_id_v1(&self, seed: u16) -> CommunityId {
@@ -295,7 +356,7 @@ impl Flow {
         let (src_ip, src_port, dst_ip, dst_port) = self.order();
 
         let mut hasher = Sha1::new();
-
+        
         // seed
         hasher.update(seed.to_be_bytes());
         // src ip
@@ -303,14 +364,18 @@ impl Flow {
         // dest ip
         hasher.update(serialize_ip(dst_ip));
         // protocol
-        hasher.update([self.proto as u8]);
+        hasher.update([u8::from(self.proto)]);
         // padding
         hasher.update([0]);
-        // src port be
-        hasher.update(src_port.to_be_bytes());
-        // dst port be
-        hasher.update(dst_port.to_be_bytes());
-
+        
+        // if both the ports are specified
+        if let (Some(src_port), Some(dst_port)) = (src_port,dst_port){
+            // src port be
+            hasher.update(src_port.to_be_bytes());
+            // dst port be
+            hasher.update(dst_port.to_be_bytes());
+        }
+        
         CommunityId::V1(hasher.finalize().into())
     }
 }
@@ -318,9 +383,9 @@ impl Flow {
 #[cfg(test)]
 mod tests {
     use std::str::FromStr;
-
+    
     use super::*;
-
+    
     macro_rules! flow {
         ($proto:expr, $src_ip:literal, $src_port:literal, $dst_ip:literal, $dst_port:literal) => {
             Flow::new(
@@ -332,23 +397,23 @@ mod tests {
             )
         };
     }
-
+    
     #[test]
     fn tcp_reorder() {
         let f = flow!(Protocol::TCP, "192.168.1.42", 42, "192.168.1.42", 41);
-
+        
         assert_eq!(
             "1:eRcf7I/xocOxnYo5pbJBV5NhVm0=",
             f.community_id_v1(0).base64()
         );
-
+        
         let f = flow!(Protocol::TCP, "192.168.1.42", 41, "192.168.1.42", 42);
         assert_eq!(
             "1:eRcf7I/xocOxnYo5pbJBV5NhVm0=",
             f.community_id_v1(0).base64()
         );
     }
-
+    
     #[test]
     fn tcp_test() {
         let f = Flow::new(
@@ -358,56 +423,56 @@ mod tests {
             IpAddr::from_str("192.168.1.20").unwrap(),
             80,
         );
-
+        
         assert_eq!(
             "1:To62PWNVuiriSZDHqB4YZp+VAYM=",
             f.community_id_v1(0).base64()
         );
-
+        
         assert_eq!(
             "1:4e8eb63d6355ba2ae24990c7a81e18669f950183",
             f.community_id_v1(0).hexdigest()
         );
     }
-
+    
     #[test]
     fn test_icmp() {
         assert_eq!(
             "1:X0snYXpgwiv9TZtqg64sgzUn6Dk=",
             flow!(Protocol::ICMP, "192.168.0.89", 8, "192.168.0.1", 0)
-                .community_id_v1(0)
-                .base64()
+            .community_id_v1(0)
+            .base64()
         );
-
+        
         assert_eq!(
             "1:X0snYXpgwiv9TZtqg64sgzUn6Dk=",
             flow!(Protocol::ICMP, "192.168.0.1", 0, "192.168.0.89", 8)
-                .community_id_v1(0)
-                .base64()
+            .community_id_v1(0)
+            .base64()
         );
-
+        
         assert_eq!(
             "1:3o2RFccXzUgjl7zDpqmY7yJi8rI=",
             flow!(Protocol::ICMP, "192.168.0.89", 20, "192.168.0.1", 0)
-                .community_id_v1(0)
-                .base64()
+            .community_id_v1(0)
+            .base64()
         );
-
+        
         assert_eq!(
             "1:tz/fHIDUHs19NkixVVoOZywde+I=",
             flow!(Protocol::ICMP, "192.168.0.89", 20, "192.168.0.1", 1)
-                .community_id_v1(0)
-                .base64()
+            .community_id_v1(0)
+            .base64()
         );
-
+        
         assert_eq!(
             "1:X0snYXpgwiv9TZtqg64sgzUn6Dk=",
             flow!(Protocol::ICMP, "192.168.0.1", 0, "192.168.0.89", 20)
-                .community_id_v1(0)
-                .base64()
+            .community_id_v1(0)
+            .base64()
         );
     }
-
+    
     #[test]
     fn test_icmp6() {
         assert_eq!(
@@ -422,7 +487,7 @@ mod tests {
             .community_id_v1(0)
             .base64()
         );
-
+        
         assert_eq!(
             "1:dGHyGvjMfljg6Bppwm3bg0LO8TY=",
             flow!(
@@ -435,7 +500,7 @@ mod tests {
             .community_id_v1(0)
             .base64()
         );
-
+        
         assert_eq!(
             "1:NdobDX8PQNJbAyfkWxhtL2Pqp5w=",
             flow!(
@@ -448,7 +513,7 @@ mod tests {
             .community_id_v1(0)
             .base64()
         );
-
+        
         assert_eq!(
             "1:/OGBt9BN1ofenrmSPWYicpij2Vc=",
             flow!(
@@ -462,16 +527,16 @@ mod tests {
             .base64()
         );
     }
-
+    
     #[test]
     fn test_serde(){
         let f = flow!(Protocol::TCP, "192.168.1.42", 41, "192.168.1.42", 42);
-
+        
         assert_eq!(
             r#""1:eRcf7I/xocOxnYo5pbJBV5NhVm0=""#,
             serde_json::to_string(&f.community_id_v1(0)).unwrap()
         );
-
+        
         assert_eq!(
             f.community_id_v1(0),
             serde_json::from_str(r#""1:eRcf7I/xocOxnYo5pbJBV5NhVm0=""#).unwrap()
